@@ -1,0 +1,24 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Local builds and packaged artifacts
+/casebook
+/dist/
+*.exe
+*.dmg
+
+# Runtime workspaces contain case data and generated exports
+/*-workspace/
+**/workspace.cbk
+**/workspace.cbk-shm
+**/workspace.cbk-wal
+**/Backups/
+**/Records/
+**/Imports/
+
+# Local editor / agent state
+/.claude/
+/.codex/
+
