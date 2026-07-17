@@ -467,8 +467,10 @@ const FIELD_LABELS = {
 };
 
 function eventText(e) {
-  let p = {};
-  try { p = JSON.parse(e.payload || "{}"); } catch (_) {}
+  let p = e.payload || {};
+  if (typeof p === "string") {
+    try { p = JSON.parse(p || "{}"); } catch (_) { p = {}; }
+  }
   switch (e.kind) {
     case "CREATED": return "created this case";
     case "NOTE": return esc(p.text || "");
@@ -486,7 +488,8 @@ function eventText(e) {
     case "ARCHIVED": return p.auto ? "archived automatically after the cool-off period" : "archived";
     case "FIELD_CHANGE": return changeList(p);
     case "CHECKLIST":
-      if (p.action === "added") return "added checklist item: " + esc(p.label);
+      if (p.action === "added") return "added checklist item: " + esc(p.label) +
+        (p.source === "ai_brief" ? ' <span class="delta">· accepted from AI brief #' + esc(p.brief_id) + "</span>" : "");
       if (p.action === "removed") return "removed checklist item: " + esc(p.label);
       return esc(p.label) + ' <span class="delta">→ ' + esc(p.state) + "</span>";
     case "REQUEST":
@@ -506,6 +509,15 @@ function eventText(e) {
     case "RECURRING":
       return "made this recurring — " + esc(p.frequency).toLowerCase() + ", next due " + esc(p.next_due) +
         (p.checklist_items ? ', checklist template carried over (' + p.checklist_items + " items)" : "");
+    case "AI_PROPOSED":
+      return "generated investigation brief #" + esc(p.brief_id) + " with " + esc(p.model) +
+        ' <span class="delta">· grounded citations ' + esc(p.grounded_citations) + "/" + esc(p.citation_count) + "</span>" +
+        (p.summary ? "<br>" + esc(p.summary) : "");
+    case "AI_ACCEPTED":
+      return "accepted AI proposal: " + esc(p.title) +
+        (p.applied_to === "checklist" ? ' <span class="delta">· added to checklist</span>' : "");
+    case "AI_REJECTED":
+      return "rejected AI proposal: " + esc(p.title);
     default: return esc(e.kind.toLowerCase());
   }
 }
@@ -530,12 +542,96 @@ const STATUS_ACTIONS = {
   "Archived": () => "Archive now",
 };
 
+const AI_GROUPS = [
+  ["allegations", "Allegations to examine"],
+  ["timeline", "Proposed timeline"],
+  ["policy_matches", "Policy matches"],
+  ["conflicts", "Conflicts"],
+  ["evidence_gaps", "Evidence gaps"],
+  ["risk_flags", "Risk flags"],
+  ["recommended_actions", "Recommended actions"],
+  ["review_questions", "Interview questions"],
+];
+
+function renderAICitation(c) {
+  return '<div class="ai-cite ' + (c.grounded ? "grounded" : "unverified") + '">' +
+    '<span class="ai-source">' + esc(c.source) + "</span> “" + esc(c.quote) + "” " +
+    '<span class="ai-ground">' + (c.grounded ? "✓ exact source match" : "⚠ verify quote") + "</span></div>";
+}
+
+function renderAIItem(brief, kind, item, canAct) {
+  const decision = (brief.decisions || []).find(d => d.item_id === item.id);
+  const evidence = (item.evidence || []).map(renderAICitation).join("");
+  let review = "";
+  if (decision) {
+    review = '<div class="ai-decision ' + decision.decision.toLowerCase() + '">' +
+      esc(decision.decision === "ACCEPTED" ? "Accepted" : "Rejected") + " by " + esc(decision.decided_by) +
+      (decision.applied_to === "checklist" ? " · added to checklist" : "") + "</div>";
+  } else if (canAct) {
+    review = '<div class="ai-review-actions">' +
+      '<button class="btn primary" data-ai-decision="ACCEPTED" data-ai-brief="' + brief.id + '" data-ai-item="' + esc(item.id) + '">Accept</button>' +
+      '<button class="btn" data-ai-decision="REJECTED" data-ai-brief="' + brief.id + '" data-ai-item="' + esc(item.id) + '">Reject</button></div>';
+  }
+  return '<article class="ai-item">' +
+    '<div class="ai-item-head"><h3>' + esc(item.title) + '</h3><div class="ai-badges">' +
+    '<span class="ai-pill priority-' + esc(item.priority) + '">' + esc(item.priority) + " priority</span>" +
+    '<span class="ai-pill">' + esc(item.confidence) + " confidence</span></div></div>" +
+    '<p>' + esc(item.detail) + "</p>" +
+    (evidence ? '<div class="ai-evidence">' + evidence + "</div>" : '<div class="ai-no-evidence">No supporting quote supplied — treat as an open question.</div>') +
+    review + "</article>";
+}
+
+function renderAIBrief(brief, canAct) {
+  const a = brief.analysis || {};
+  const groups = AI_GROUPS.map(([key, label]) => {
+    const items = a[key] || [];
+    if (!items.length) return "";
+    return '<section class="ai-group"><div class="ai-group-title">' + esc(label) + ' <span>' + items.length + "</span></div>" +
+      items.map(item => renderAIItem(brief, key, item, canAct)).join("") + "</section>";
+  }).join("");
+  const citationLabel = brief.citation_count
+    ? brief.grounded_citations + "/" + brief.citation_count + " exact source matches"
+    : "No source quotes";
+  return '<div class="ai-brief">' +
+    '<div class="ai-brief-meta"><span>Brief #' + brief.id + "</span><span>" + esc(brief.model) + "</span><span>" + fmtWhen(brief.created_at) +
+    '</span><span class="ai-grounding">' + esc(citationLabel) + "</span></div>" +
+    '<div class="ai-summary"><div class="ai-kicker">Investigation brief · human review required</div><h2>' + esc(a.executive_summary || "") +
+    '</h2><p>' + esc(a.scope_note || "") + "</p></div>" + groups + "</div>";
+}
+
+function renderAIPane(briefs, canAct) {
+  const ai = BOOT.ai || {};
+  const liveState = ai.configured
+    ? '<span class="ai-ready">● ' + esc(ai.model || "gpt-5.6-sol") + " ready</span>"
+    : '<span class="ai-not-ready">○ OPENAI_API_KEY not configured</span>';
+  const form = canAct ?
+    '<div class="ai-intake">' +
+    '<div class="ai-intake-head"><div><div class="ai-kicker">Evidence-grounded analysis</div><h2>Build an auditable investigation brief</h2></div>' + liveState + "</div>" +
+    '<p class="ai-notice">' + esc(ai.cloud_notice || "Only the text below is sent to OpenAI when you press Analyze.") + " The model proposes; you decide.</p>" +
+    '<label>Report or intake narrative <span>required</span></label><textarea id="ai-report" rows="5" placeholder="Paste the report, complaint, interview note, or intake narrative…"></textarea>' +
+    '<div class="ai-source-grid"><div><label>Policy material</label><textarea id="ai-policy" rows="5" placeholder="Paste the relevant policy sections…"></textarea></div>' +
+    '<div><label>Evidence notes</label><textarea id="ai-evidence" rows="5" placeholder="Paste email excerpts, system notes, or evidence descriptions…"></textarea></div></div>' +
+    '<label class="ai-consent"><input type="checkbox" id="ai-consent"> I understand the pasted text will be sent to OpenAI for this analysis.</label>' +
+    '<div class="ai-runbar"><button class="btn primary" id="ai-run">Analyze with ' + esc(ai.model || "gpt-5.6-sol") + '</button>' +
+    '<button class="btn" id="ai-demo">Load synthetic demo brief</button><span class="t-faint">Demo mode is local and clearly labeled.</span></div></div>' : "";
+  const history = briefs.length
+    ? '<div class="ai-history">' + briefs.map(b => renderAIBrief(b, canAct)).join("") + "</div>"
+    : '<div class="ai-empty"><b>No investigation brief yet.</b><span>Paste a source packet above, or load the synthetic demo to explore the review workflow.</span></div>';
+  return form + history;
+}
+
 async function viewCase(no) {
   view().innerHTML = '<div class="page"><div class="empty">Loading…</div></div>';
   let d;
   try { d = await api("/api/cases/" + encodeURIComponent(no)); } catch (err) {
     view().innerHTML = '<div class="page"><div class="empty">' + esc(err.message) + "</div></div>";
     return;
+  }
+  try {
+    d.ai_briefs = (await api("/api/cases/" + encodeURIComponent(no) + "/ai-briefs")).briefs || [];
+  } catch (err) {
+    d.ai_briefs = [];
+    d.ai_error = err.message;
   }
   const c = d.case;
   const mine = c.owner_id === ME;
@@ -615,6 +711,8 @@ async function viewCase(no) {
     '<button class="rtab' + (CASE_RTAB === "activity" ? " on" : "") + '" data-rtab="activity">Activity</button>' +
     '<button class="rtab' + (CASE_RTAB === "checklist" ? " on" : "") + '" data-rtab="checklist">Checklist <span class="count">' +
     (d.checklist || []).length + "</span></button>" +
+    '<button class="rtab' + (CASE_RTAB === "ai" ? " on" : "") + '" data-rtab="ai">AI Brief <span class="count">' +
+    (d.ai_briefs || []).length + "</span></button>" +
     "</div>" +
     '<div data-rpane="activity"' + (CASE_RTAB === "activity" ? "" : ' style="display:none"') + ">" +
     '<div class="composer"><textarea id="note-text" placeholder="Add a note — what happened, what you decided, why it moved"></textarea>' +
@@ -646,6 +744,9 @@ async function viewCase(no) {
       ? '<div class="t-faint" style="font-size:12px;padding-top:8px">This case came from a recurring item — next year’s copy will start with the same checklist.</div>'
       : "") +
     "</div></div>" +
+    '<div data-rpane="ai"' + (CASE_RTAB === "ai" ? "" : ' style="display:none"') + ">" +
+    (d.ai_error ? '<div class="empty">Could not load AI briefs: ' + esc(d.ai_error) + "</div>" : renderAIPane(d.ai_briefs || [], canAct)) +
+    "</div>" +
     "</div></div></div>";
 
   function field(label, control) {
@@ -826,6 +927,49 @@ async function viewCase(no) {
       CASE_RTAB = b.dataset.rtab;
       document.querySelectorAll(".rtab").forEach(x => x.classList.toggle("on", x.dataset.rtab === CASE_RTAB));
       document.querySelectorAll("[data-rpane]").forEach(p => { p.style.display = p.dataset.rpane === CASE_RTAB ? "" : "none"; });
+    };
+  });
+
+  const runAIBrief = async demo => {
+    const runBtn = document.getElementById(demo ? "ai-demo" : "ai-run");
+    if (!runBtn) return;
+    const body = { demo: !!demo };
+    if (!demo) {
+      body.report = document.getElementById("ai-report").value.trim();
+      body.policy = document.getElementById("ai-policy").value.trim();
+      body.evidence = document.getElementById("ai-evidence").value.trim();
+      if (!body.report) { toast("Paste a report or intake narrative first", true); return; }
+      if (!document.getElementById("ai-consent").checked) { toast("Confirm the OpenAI data notice before analysis", true); return; }
+    }
+    const original = runBtn.textContent;
+    document.querySelectorAll("#ai-run,#ai-demo").forEach(b => { b.disabled = true; });
+    runBtn.textContent = demo ? "Loading demo…" : "Building brief…";
+    try {
+      await api("/api/cases/" + encodeURIComponent(no) + "/ai-briefs", { method: "POST", body });
+      toast(demo ? "Synthetic investigation brief loaded" : "Investigation brief ready for human review");
+      CASE_RTAB = "ai";
+      reload();
+    } catch (err) {
+      toast(err.message, true);
+      document.querySelectorAll("#ai-run,#ai-demo").forEach(b => { b.disabled = false; });
+      runBtn.textContent = original;
+    }
+  };
+  const aiRun = document.getElementById("ai-run");
+  if (aiRun) aiRun.onclick = () => runAIBrief(false);
+  const aiDemo = document.getElementById("ai-demo");
+  if (aiDemo) aiDemo.onclick = () => runAIBrief(true);
+  document.querySelectorAll("[data-ai-decision]").forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api("/api/cases/" + encodeURIComponent(no) + "/ai-briefs/" + b.dataset.aiBrief + "/decisions", {
+          method: "POST", body: { decisions: [{ item_id: b.dataset.aiItem, decision: b.dataset.aiDecision }] },
+        });
+        toast(b.dataset.aiDecision === "ACCEPTED" ? "AI proposal accepted and audited" : "AI proposal rejected and audited");
+        CASE_RTAB = "ai";
+        reload();
+      } catch (err) { toast(err.message, true); b.disabled = false; }
     };
   });
 

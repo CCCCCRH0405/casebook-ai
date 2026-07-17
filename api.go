@@ -14,8 +14,11 @@ import (
 )
 
 type server struct {
-	db *sql.DB
-	ws string
+	db        *sql.DB
+	ws        string
+	aiBaseURL string
+	aiAPIKey  string
+	aiClient  *http.Client
 }
 
 var transitions = map[string][]string{
@@ -250,6 +253,7 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		"waiting_options": waitingOptions,
 		"transitions":     transitions,
 		"version":         appVersion,
+		"ai":              s.aiStatus(),
 	})
 }
 
@@ -993,6 +997,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/obligations/{id}", s.handlePatchObligation)
 	mux.HandleFunc("POST /api/obligations/{id}/spawn", s.handleSpawnObligation)
 	mux.HandleFunc("POST /api/cases/{no}/make-recurring", s.handleMakeRecurring)
+	mux.HandleFunc("GET /api/cases/{no}/ai-briefs", s.handleListAIBriefs)
+	mux.HandleFunc("POST /api/cases/{no}/ai-briefs", s.handleCreateAIBrief)
+	mux.HandleFunc("POST /api/cases/{no}/ai-briefs/{id}/decisions", s.handleDecideAIBrief)
 	mux.HandleFunc("GET /api/reports", s.handleReports)
 	mux.HandleFunc("GET /api/calendar.ics", s.handleCalendarICS)
 	mux.HandleFunc("POST /api/sample", s.handleSample)

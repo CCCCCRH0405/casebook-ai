@@ -113,6 +113,34 @@ CREATE TABLE IF NOT EXISTS coverage (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_coverage_case ON coverage(case_id, status);
+CREATE TABLE IF NOT EXISTS ai_briefs (
+  id INTEGER PRIMARY KEY,
+  case_id INTEGER NOT NULL REFERENCES cases(id),
+  created_at TEXT NOT NULL,
+  created_by INTEGER NOT NULL REFERENCES members(id),
+  model TEXT NOT NULL,
+  response_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'READY',
+  input_sha256 TEXT NOT NULL,
+  input_json TEXT NOT NULL,
+  analysis_json TEXT NOT NULL,
+  citation_count INTEGER NOT NULL DEFAULT 0,
+  grounded_citations INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ai_briefs_case ON ai_briefs(case_id, id DESC);
+CREATE TABLE IF NOT EXISTS ai_brief_decisions (
+  id INTEGER PRIMARY KEY,
+  brief_id INTEGER NOT NULL REFERENCES ai_briefs(id),
+  item_kind TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  item_title TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  decided_at TEXT NOT NULL,
+  decided_by INTEGER NOT NULL REFERENCES members(id),
+  applied_to TEXT NOT NULL DEFAULT '',
+  UNIQUE(brief_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_brief_decisions_brief ON ai_brief_decisions(brief_id, id);
 `
 
 var defaultTypes = []string{"Inquiry", "Filing", "Testing", "Review", "Remediation", "Request", "Task"}
