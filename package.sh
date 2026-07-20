@@ -10,9 +10,9 @@ APP="dist/Casebook.app"
 
 echo "==> building binaries"
 mkdir -p dist
-GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "dist/casebook-macos-arm64" .
-GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/casebook-macos-intel" .
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/casebook-windows.exe" .
+GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.appVersion=$VERSION" -o "dist/casebook-macos-arm64" .
+GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.appVersion=$VERSION" -o "dist/casebook-macos-intel" .
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.appVersion=$VERSION" -o "dist/casebook-windows.exe" .
 
 echo "==> assembling universal macOS binary"
 if command -v lipo >/dev/null 2>&1; then
@@ -72,7 +72,8 @@ Casebook $VERSION
 3. Your browser opens to the app. Keep the small window in the background while you use it.
 4. To let teammates connect, see the project README (run with the -lan option).
 
-All your data stays in the folder you pick. Nothing is uploaded anywhere.
+Case data stays in the folder you pick. The optional AI Brief sends only text
+you explicitly paste and submit; see the project README before using it.
 TXT
 ( cd "$(dirname "$WINDIR")" && zip -qr -X "$OLDPWD/dist/Casebook-windows-$VERSION.zip" "Casebook" )
 rm -rf "$(dirname "$WINDIR")"

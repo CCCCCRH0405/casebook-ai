@@ -238,3 +238,35 @@
 - [ ] **Add type — happy path:** type name, click "Add type" → type appears in list (no explicit toast in current code — verify server returns and list re-renders; flag if silent)
 - [ ] **Add type — empty name:** click "Add type" with blank input → no request sent (JS guard), no change
 - [ ] **Add type — server error:** error toast
+
+---
+
+## 10. AI Brief
+
+### Data boundary and generation
+
+- [x] **No-key state:** without `OPENAI_API_KEY`, the tab says the live model is not configured and the synthetic demo remains available
+- [x] **Synthetic fixture:** click "Load synthetic demo" → fictional report, policy, and evidence are populated; the generated brief is labeled `demo-fixture`
+- [x] **Consent gate:** live analysis is blocked with a visible message until the cloud-processing checkbox is selected
+- [x] **Live GPT-5.6-sol run:** submit only the synthetic packet → structured brief renders successfully
+- [x] **Input contract:** mock API test confirms model, `store: false`, medium reasoning, safety identifier, and strict JSON schema
+- [x] **Permission check:** a member who is neither owner nor active coverer cannot generate a brief
+- [x] **Missing report:** empty required report is rejected with a visible error
+- [x] **Oversized inputs:** per-source and total source limits are enforced server-side
+
+### Grounding and review
+
+- [x] **Citation grounding:** source quotes show exact-match status; synthetic live run verified 32/32 citations
+- [x] **Human acceptance:** accept a recommended action → immutable decision is saved
+- [x] **Checklist application:** accepted action appears as a Needed checklist item
+- [x] **Human rejection:** reject an item → decision is saved but no case field or checklist item changes
+- [x] **Idempotency:** repeating the same decision creates no duplicate checklist item
+- [x] **Conflicting decision:** attempting to reverse a saved decision is rejected
+- [x] **Read-only review:** a non-owner/non-coverer cannot accept or reject items
+
+### Audit trail
+
+- [x] **Generation event:** Activity shows model, brief ID, and grounded-citation count
+- [x] **Decision event:** Activity shows accepted/rejected item and application target
+- [x] **Checklist provenance:** applied action includes the originating AI brief ID
+- [x] **Frontend payload rendering:** structured event payloads render human-readable text rather than `[object Object]`

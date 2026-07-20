@@ -1,128 +1,136 @@
-# Casebook — compliance case management
+# Casebook AI
 
-A local case tracker for small compliance teams. Runs from a folder — no server, no cloud, no IT ticket.
+**Turn messy compliance reports, policies, and evidence into an auditable investigation workflow.**
 
-## The story
+Casebook is a local-first case tracker for small compliance teams. Its optional AI Brief workflow uses OpenAI GPT-5.6-sol to organize a pasted case packet into a reviewable investigation brief—with exact source quotes, explicit confidence, human accept/reject decisions, and an append-only audit trail.
 
-I work in compliance. Outside the daily routine, the real pain is keeping track of everything else — inquiries, filings, reviews, remediation items, recurring obligations, the perpetual "where are we on this?" question from management. I built this for myself because spreadsheets kept falling apart under that load: cells overwritten with no history, ownership unclear, recurring items missed, no easy way to show an examiner what happened and when.
+Built for [OpenAI Build Week 2026](https://openai.devpost.com/).
 
-I probably can't even use it at my own firm — IT only gets stricter every year — so I'm open-sourcing it for anyone whose team still runs on Excel.
+**[Watch the 2:48 demo](https://youtu.be/km7yKSPvfw0) · [Download v0.2.0 Build Week release](https://github.com/CCCCCRH0405/casebook-ai/releases/tag/v0.2.0-buildweek) · [View the public repository](https://github.com/CCCCCRH0405/casebook-ai)**
 
-## Who it's for
+## Why this exists
 
-Small compliance teams (roughly 3–10 people) who want to track working cases, recurring obligations, and evidence collection without standing up infrastructure. One person runs the binary; teammates use a browser on the same network.
+Compliance investigations rarely begin with a neat dataset. They begin with a report, a policy PDF, email excerpts, partial exports, and a deadline. Spreadsheets can track rows, but they do not reliably answer:
 
-## Who it's not for
+- Which claims are supported by which source?
+- What evidence is missing or contradictory?
+- Which next steps did a human investigator approve?
+- What changed, when, and by whom?
 
-- Enterprise or IT-managed environments (there is no SSO, no LDAP, no audit-grade access control)
-- Teams that need a GRC platform, risk register, or policy management system
-- Anyone looking for regulatory guidance or compliance advice — this tool contains none
-- Cloud-hosted or multi-office deployments
+Casebook keeps the operational record local while adding an evidence-grounded AI layer that proposes—not decides—the next investigation steps.
 
-If you need real authentication, role-based access control, or a server that survives the host laptop closing, this is not that.
+## The Build Week workflow
+
+1. Open a case and choose **AI Brief**.
+2. Paste a synthetic or approved report, policy excerpt, and evidence notes.
+3. Confirm the cloud-processing notice and run the analysis.
+4. Review allegations, timeline events, policy matches, evidence gaps, conflicts, risk flags, recommended actions, and interview questions.
+5. Inspect every quote. Casebook checks each quoted passage against the submitted source text and marks whether it is an exact match.
+6. Accept or reject each proposal. Accepted evidence gaps and actions become checklist items; every decision becomes an immutable case event.
+
+The model never changes the case silently and never makes a final misconduct or legal determination.
+
+## What makes the AI workflow auditable
+
+- **Structured output:** GPT-5.6-sol must satisfy a strict JSON schema.
+- **Source grounding:** factual items require short quotes labeled `report`, `policy`, or `evidence`.
+- **Server-side verification:** Casebook independently checks whether each quote appears in the submitted source.
+- **Human-in-the-loop:** proposals remain inert until the case owner or active coverer accepts or rejects them.
+- **Append-only provenance:** generation, acceptance, rejection, and checklist application are recorded in the case timeline.
+- **Input fingerprinting:** each brief stores a SHA-256 hash of its submitted packet.
+- **Privacy controls:** analysis is explicit, limited to text pasted in the AI Brief tab, and sent with `store: false`.
+
+No API key? Use the clearly labeled local demo fixture. It exercises the complete review and audit workflow without a network request.
+
+## Existing case-management features
+
+- Cases with owners, deadlines, waiting states, tags, and workpaper locations
+- Evidence checklist with Needed → Requested → Received → N/A states
+- Append-only activity timeline
+- Coverage, ownership-transfer, and help requests
+- Recurring compliance obligations
+- Today view for overdue and upcoming work
+- Examiner package export to XLSX
+- Calendar export to ICS
+- Validated XLSX import
+- Local SQLite workspace, daily backups, and readable Excel snapshots
 
 ## Quick start
 
-### Download the binary
-
-1. Download the binary for your OS from the Releases page.
-2. Put it anywhere — your desktop, a shared drive, wherever the team can reach it.
-3. Double-click to run. A first-run wizard walks you through picking a folder, naming your team, and adding teammates.
-4. The app prints a LAN URL (`http://<your-ip>:8484`). Teammates open that in any browser — nothing to install on their end.
-
-### Build from source
-
-Requires Go 1.22+.
+Requires Go 1.24 or newer.
 
 ```sh
-git clone https://github.com/yourusername/compliance-case-management
-cd compliance-case-management
-go build -o casebook ./cmd/casebook
+go build -o casebook .
 ./casebook
 ```
 
-No CGO required. The SQLite driver is pure Go.
+Casebook opens at `http://localhost:8484`. To allow teammates on a trusted local network to connect, start it with `./casebook -lan`.
 
-## The workspace folder
+### Enable live AI Briefs
 
-Everything lives in one folder you pick at first run:
-
+```sh
+export OPENAI_API_KEY="your-api-key"
+./casebook
 ```
+
+Optional: set `CASEBOOK_AI_MODEL` to override the default `gpt-5.6-sol` model.
+
+Never commit a real API key. Casebook reads it from the process environment and does not store it in the workspace database.
+
+## Run the synthetic demo
+
+The in-app **Load synthetic demo** button uses a fictional report about Jordan Lee and Morgan Vale. The same input packet is available in [`demo/`](demo/) for repeatable testing. No real firm, employee, customer, or account data is included.
+
+## Data and trust model
+
+Everything except an explicitly submitted AI Brief lives in the workspace folder:
+
+```text
 My Compliance Casebook/
-├─ workspace.cbk        ← all live data (SQLite; backup = copy this file)
-├─ Records/             ← auto-refreshed Excel snapshots (read-only)
-│   ├─ Cases_2026-06.xlsx
-│   └─ ActivityLog_2026-06.xlsx
-├─ Backups/             ← daily auto-zips, 14 copies kept
-└─ Imports/             ← drop import files here
+├─ workspace.cbk        # live SQLite data
+├─ Records/             # auto-refreshed Excel snapshots
+├─ Backups/             # daily backups; 14 copies retained
+└─ Imports/             # validated import files
 ```
 
-**Backup = copy the folder.** That's it. No database server, no backup agent, no export ritual.
+AI Briefs are opt-in. Casebook sends only the text pasted into that tab plus the case number, title, and current status. It does not automatically analyze other case fields, files, workpaper links, the database, or the workspace folder. Requests use the OpenAI Responses API with storage disabled.
 
-## Features
+Casebook is designed for a small team on a trusted network. Its member picker and optional PIN are not enterprise authentication. It does not provide SSO, RBAC, database encryption, or TLS. Do not use it with confidential or regulated data unless your organization has reviewed and approved the deployment and AI data flow.
 
-**First-run wizard.** Pick a folder, name your team, add teammates. A sample-data option lets you load a demo workspace and see the app in action before entering real data.
+## Development
 
-**Quick-add.** Press `/` anywhere, type a title, hit Enter. The case is recorded in under ten seconds; fill in details later.
+```sh
+go test ./...
+go vet ./...
+node --check web/app.js
+go build -trimpath -o casebook .
+```
 
-**Cases.** Each case has: type (Inquiry / Filing / Testing / Review / Remediation / Request / Task — customizable in Settings), owner, next-action due date, hard deadline, source, workpaper location (a path or link — files are never uploaded), tags, and description.
+CI runs the same checks on pushes and pull requests.
 
-**Status state machine.** Open → In Progress → Waiting → Completed → Archived, with Cancelled reachable from any state. Waiting requires picking who you're waiting on (Business Unit, Legal, IT, Regulator, Vendor, Counterparty, or Other) — this becomes a structured field, not a buried note, so you can report on it. Completed cases auto-archive after a 7-day cool-off. Cancelled requires a reason. Any case can be reopened. Every transition is appended to an immutable audit timeline.
+## Build Week provenance
 
-**Evidence checklist.** Each case has an evidence tab. Items move through Needed → Requested → Received → N/A. Every change is audited.
+This repository existed as a local case-management application before the competition. The Build Week submission is the evidence-grounded AI investigation workflow added after July 13, 2026. The pre-extension snapshot is tagged `pre-build-week-baseline`; the dated change record and old/new scope comparison are in [`docs/BUILD_WEEK.md`](docs/BUILD_WEEK.md).
 
-**Audit timeline.** Every case carries a full append-only event history: field changes, status transitions, notes, assignments, requests, imports. Nothing is ever updated or deleted. If something was recorded wrong, you append a correction.
+## How I collaborated with Codex
 
-**Collaboration.** Three request types live in the Inbox:
-- *Coverage request* — "cover for me while I'm out." The accepted coverer gets edit rights on the case for the duration.
-- *Ownership transfer* — current owner must approve before the case moves.
-- *Help request* — a lightweight nudge that creates an Inbox item without transferring ownership.
+Codex accelerated the work by mapping the existing Go/SQLite application, checking current OpenAI API guidance, implementing the Responses API and persistence layers, expanding automated tests, exercising the live model with synthetic data, performing browser-based UI QA, and preparing the release and submission materials.
 
-**Recurring obligations.** Yearly, Quarterly, Monthly, or Weekly items with configurable lead time. Each obligation carries a checklist template that is copied into every auto-created case. The obligation detail page lists all historical cases for that obligation. You can also trigger "Create now" manually. The engine runs at startup and nightly at 00:05.
+I made the key product and risk decisions: the AI receives only text explicitly pasted for analysis; factual proposals need traceable quotes; Casebook verifies those quotes outside the model; the model cannot change a case without an item-level human decision; and every proposal and decision enters the normal audit trail. GPT-5.6-sol is the investigation analyst inside that boundary, while Codex was the engineering collaborator used to build and validate it.
 
-**Today page.** Overdue, due today, due in the next 7 days, items you're waiting on, and cases you're covering — one page, no hunting.
+Submission materials:
 
-**Cases table.** Full list with filters (type, status, owner, tags, date range) and text search. Filters can be saved.
+- [`docs/DEVPOST_SUBMISSION.md`](docs/DEVPOST_SUBMISSION.md) — ready-to-paste project description
+- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — sub-three-minute video script
+- [`docs/SECURITY.md`](docs/SECURITY.md) — data flow and safeguards
+- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) — manual release checks
 
-**Examiner package.** Select a date range, case types, and members; export a single xlsx with a summary sheet, all matching cases, full event histories, obligations, and members. Filename includes a timestamp.
+The required Codex `/feedback` session was uploaded. Its Session ID is provided only through the Devpost submission form.
 
-**Calendar export.** All due dates and deadlines export as an .ics file that Outlook, Google Calendar, or Apple Calendar can subscribe to directly.
+## Limitations
 
-**Import.** Download a template xlsx, fill it in, drop it in `Imports/` or upload it from the Import page. Every row is validated before you can commit; errors are shown row-by-row with the specific problem. Nothing is silently skipped.
-
-## The trust model
-
-Casebook is designed for a small team sharing an office network. The trust level is comparable to a shared spreadsheet on a shared drive.
-
-Identity works like this: when you open the app, you pick your name from the team list. If you set a PIN (4–8 digits), you enter it at that screen. That is the full extent of access control.
-
-The PIN is an honest speed bump for shared-office scenarios — it slows down accidental or casual access in a room where someone might sit at an unlocked laptop. It does not protect against anyone determined to access the data, does not encrypt the database, and is not a substitute for real authentication. An admin can clear a forgotten PIN but cannot set one for another member (PINs are optional, and the member sets their own).
-
-What Casebook does not provide: network encryption (use a VPN or trusted LAN), user authentication, role-based access control, or any protection against someone with filesystem access to the host machine reading `workspace.cbk` directly (it is a standard SQLite file).
-
-If your threat model requires any of those, this tool is not appropriate for your environment.
-
-## FAQ
-
-**Is my data uploaded anywhere?**
-No. The binary makes no outbound network connections. All data stays in the folder you picked.
-
-**Why does it need a port?**
-It runs a small HTTP server on port 8484 so teammates can connect from their browsers. Nothing is exposed outside your LAN unless you configure your router or firewall to do so (don't).
-
-**What happens when the host laptop closes?**
-Teammates see a clear "Host is offline" page with instructions on who to contact. Nothing corrupts; the data is safe. Reopen the laptop and the app is available again.
-
-**Why SQLite and not Excel as the live store?**
-Excel files are not safe for concurrent writes and have no audit trail. Casebook uses SQLite (with WAL mode) as the live database and writes Excel snapshots to `Records/` automatically — so anyone who wants to open a spreadsheet and read the current state can do so at any time, without that spreadsheet being the thing you write to.
-
-**Can FINRA, the SEC, or internal auditors get records from this?**
-Yes, that's the point. Use the Examiner Package export: select the date range and scope, and you get a single xlsx with full case history and event timelines. Nothing requires live access to the running application.
+Casebook is not legal advice, a regulatory conclusion engine, or an enterprise GRC platform. AI output can be incomplete or wrong. Investigators must verify sources, apply their own judgment, and follow their organization's policies.
 
 ## License
 
-MIT. See LICENSE.
-
-## Status
-
-Early-stage. Built with heavy AI assistance by one compliance professional. The data model and state machine are intentional; the UI and edge cases still need work. Feedback from anyone who has actually run a compliance function is especially welcome — open an issue or start a discussion.
+[MIT](LICENSE)
